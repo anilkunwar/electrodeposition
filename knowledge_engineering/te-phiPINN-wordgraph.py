@@ -26,35 +26,50 @@ import yaml
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
-# Download NLTK and spaCy data
+# Initialize session state
+if 'custom_stopwords' not in st.session_state:
+    st.session_state.custom_stopwords = "et al,figure,table"
+if 'clear_selections' not in st.session_state:
+    st.session_state.clear_selections = False
+if 'custom_idf' not in st.session_state:
+    st.session_state.custom_idf = {}
+
+# Download NLTK data
 def download_nltk_data():
     try:
         nltk.data.find('tokenizers/punkt_tab')
         nltk.data.find('corpora/stopwords')
         logger.info("NLTK data already present.")
+        return True
     except LookupError:
-        try:
-            logger.info("Downloading NLTK punkt_tab and stopwords...")
-            nltk.download('punkt_tab', quiet=True)
-            nltk.download('stopwords', quiet=True)
-            logger.info("NLTK data downloaded successfully.")
-        except Exception as e:
-            logger.error(f"Failed to download NLTK data: {str(e)}")
-            st.error(f"Failed to download NLTK data: {str(e)}. Please try again or check your network.")
-            return False
-    return True
+        logger.info("Downloading NLTK punkt_tab and stopwords...")
+        nltk.download('punkt_tab', quiet=True)
+        nltk.download('stopwords', quiet=True)
+        logger.info("NLTK data downloaded successfully.")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to download NLTK data: {str(e)}")
+        st.error(f"Failed to download NLTK data: {str(e)}")
+        return False
 
-# Download spaCy model
-try:
-    nlp = spacy.load("en_core_web_sm")
-except OSError:
-    logger.info("Downloading spaCy en_core_web_sm model...")
-    os.system("python -m spacy download en_core_web_sm")
-    nlp = spacy.load("en_core_web_sm")
-
-# Download NLTK data at startup
 if not download_nltk_data():
     st.stop()
+
+# Cache spaCy model
+@st.cache_resource
+def load_spacy_model():
+    try:
+        nlp = spacy.load("en_core_web_sm")
+        logger.info("Loaded spaCy en_core_web_sm model.")
+        return nlp
+    except OSError:
+        logger.info("Downloading spaCy en_core_web_sm model...")
+        os.system("python -m spacy download en_core_web_sm")
+        nlp = spacy.load("en_core_web_sm")
+        logger.info("Downloaded and loaded spaCy model.")
+        return nlp
+
+nlp = load_spacy_model()
 
 # Default keywords in YAML format for Phase Field PINN Cu Template Electrodeposition
 DEFAULT_KEYWORDS_YAML = """
