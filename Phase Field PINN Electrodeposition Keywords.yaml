@@ -1,0 +1,126 @@
+```yaml
+categories:
+  phase_field_models:
+    name: Phase Field Models
+    keywords:
+      - Allen-Cahn equation
+      - Cahn-Hilliard equation
+      - Ginzburg-Landau functional
+      - phase-field modeling
+      - spinodal decomposition
+      - dendritic solidification
+      - order parameter
+      - interface dynamics
+      - double-well potential
+      - gradient flow
+  physics_informed_neural_networks:
+    name: Physics-Informed Neural Networks (PINNs)
+    keywords:
+      - physics-informed neural networks
+      - PINNs
+      - neural network architecture
+      - causal training
+      - Fourier features
+      - random Fourier features
+      - loss function
+      - automatic differentiation
+      - Adam optimizer
+      - spectral bias
+  electrodeposition_processes:
+    name: Electrodeposition Processes
+    keywords:
+      - electrodeposition
+      - dendrite formation
+      - overpotential
+      - Butler-Volmer equation
+      - ion flux
+      - chemical potential
+      - lithium-ion transport
+      - electrochemical reaction
+      - metal plating
+      - concentration-driven diffusion
+      - pulsed electrodeposition
+      - ionic liquid electrolyte
+      - aluminum nano-rods
+      - current collector
+      - template-assisted deposition
+      - Sb-tartrate electrolyte
+      - pulsed-current deposition
+      - nano-pillar coating
+      - Cu nano-rods
+      - homogeneous coverage
+      - electrolyte decomposition
+  numerical_methods:
+    name: Numerical Methods
+    keywords:
+      - finite element method
+      - FEM
+      - finite difference method
+      - numerical solver
+      - computational mesh
+      - adaptive error control
+      - MOOSE framework
+      - FEniCS
+      - computational cost
+      - linear system
+  battery_technologies:
+    name: Battery Technologies
+    keywords:
+      - lithium-ion batteries
+      - metal electrodes
+      - sodium electrodes
+      - zinc electrodes
+      - anode
+      - cathode
+      - electrolyte
+      - redox reaction
+      - Coulombic efficiency
+      - short-circuiting
+      - 3D micro-batteries
+      - intercalation
+      - rocking-chair battery
+      - anatase TiO₂
+      - lithium alloying
+      - lithium-alloying anode
+      - gravimetric capacity
+      - capacity retention
+      - cycling stability
+      - Sn-based anode
+      - LiCoO₂ cathode
+  material_parameters:
+    name: Material Parameters
+    keywords:
+      - interfacial mobility
+      - surface tension
+      - interface thickness
+      - diffusivity
+      - conductivity
+      - molar fraction
+      - charge-transfer coefficient
+      - applied potential
+      - site density
+      - barrier height
+      - area gain
+      - electrochemical stability window
+      - viscosity
+      - adherence
+      - volume expansion
+      - particle size
+      - morphology
+      - Li⁺ transference number
+      - electrolyte uptake
+      - mechanical integrity
+  3d_micro_battery_architectures:
+    name: 3D Micro-Battery Architectures
+    keywords:
+      - interdigitated arrays
+      - interpenetrated electrodes
+      - aperiodic sponge-like configuration
+      - nano-structured current collector
+      - conformal electrolyte layer
+      - Cu₂Sb electrode
+      - nano-structured anode
+      - hybrid polymer separator
+      - spray coating
+      - trenched structure
+```
