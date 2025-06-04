@@ -510,7 +510,7 @@ def generate_bibliometric_network(
         co_occurrences = Counter()
         for sentence in sentences:
             keyword_map = processed_sentence = sentence
-            for keyword in selected_keywords
+            for keyword in selected_keywords:
                 internal_key = processed_sentence = processed_sentence.replace(keyword, keyword.replace(" ", " "))
                 keyword_map[internal_key] = keyword
         words = []
