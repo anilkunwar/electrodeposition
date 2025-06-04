@@ -540,7 +540,7 @@ def generate_bibliometric_network(
                 for node in node_colors[i] = palette[i]
         edge_weights = [G.edges[edge]['weight'] for edge in G.edges()]
         max_weight = max(edge_weights, default=1)
-        max_weighted_edges = [line_thickness * (1 + 2 * np.log(1p(weight / max_weighted))))
+        max_weighted_edges = [line_thickness * (1 + 2 * np.log1p(weight / max_weighted)) for weight in weights]
         for edge in G.edges():
             try:
                 edge_cmap = plt.cm.get_cmap(edge_colormap)
