@@ -302,7 +302,20 @@ def estimate_idf(term, word_freq, total_words, idf_approx, keyword_categories, n
     logger.debug(f"Estimated IDF for {term}: {estimated_idf:.3f} (freq={freq_idf:.3f}, sim={sim_idf:.3f}, cat={cat_idf:.3f})")
     return estimated_idf
 
-def get_candidate_keywords(text, min_freq, min_length, use_stopwords, custom_stopwords, exclude_keywords, top_limit, tfidf_weight, use_nouns_only, include_phrases):
+@st.cache_data
+def get_candidate_keywords(
+    text: str,
+    min_freq: int,
+    min_length: int,
+    use_stopwords: bool,
+    custom_stopwords: str,
+    exclude_keywords: str,
+    top_limit: int,
+    tfidf_weight: float,
+    use_nouns_only: bool,
+    include_phrases: bool
+) -> tuple:
+    # [Function body remains identical to your original]
     stop_words = set(stopwords.words('english')) if use_stopwords else set()
     stop_words.update(['introduction', 'conclusion', 'section', 'chapter', 'the', 'a', 'an', 'preprint', 'submitted', 'manuscript'])
     stop_words.update([w.strip().lower() for w in custom_stopwords.split(",") if w.strip()])
