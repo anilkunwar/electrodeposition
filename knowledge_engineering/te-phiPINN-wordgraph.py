@@ -388,10 +388,11 @@ def get_candidate_keywords(text, min_freq, min_length, use_stopwords, custom_sto
     logger.debug("Categorized keywords: %s", {k: [t[0] for t in v] for k, v in categorized_keywords.items()})
     return categorized_keywords, word_freq, phrases, tfidf_scores, term_to_category, idf_sources
 
-def extract_text_from_pdf(file):
+@st.cache_data
+def extract_text_from_pdf(file_bytes: bytes) -> str:
     try:
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
-            tmp_file.write(file.read())
+            tmp_file.write(file_bytes)
             tmp_file_path = tmp_file.name
         pdf_reader = PyPDF2.PdfReader(tmp_file_path)
         text = ""
@@ -400,6 +401,7 @@ def extract_text_from_pdf(file):
             if page_text:
                 text += page_text + "\n"
         os.unlink(tmp_file_path)
+        logger.info("Extracted text from PDF")
         return text if text.strip() else "No text extracted from the PDF."
     except Exception as e:
         logger.error(f"Error extracting text: {str(e)}")
