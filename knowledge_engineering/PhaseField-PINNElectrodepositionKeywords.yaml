@@ -1,4 +1,3 @@
-```yaml
 categories:
   phase_field_models:
     name: Phase Field Models
@@ -123,4 +122,4 @@ categories:
       - hybrid polymer separator
       - spray coating
       - trenched structure
-```
+
