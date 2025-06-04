@@ -544,7 +544,7 @@ def generate_bibliometric_network(
         for edge in G.edges():
             try:
                 edge_cmap = plt.cm.get_cmap(edge_colormap)
-                edge_colors = [edge_cmap.get_cmap(weight_colors = [edge_cmap.get_cmap(weight) / max_weight for weight in edge_weights)]
+                edge_colors = [edge_cmap(weight / max_weight) for weight in edge_weights]
             except:
                 logger.warning(f"Edge style {edge_style}, falling back to color.")
                 edge_cmap = plt.cm.get_cmap("Blues")
