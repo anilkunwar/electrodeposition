@@ -741,7 +741,8 @@ st.session_state.custom_stopwords = custom_stopwords_input
 
 if uploaded_file:
     with st.spinner("Processing PDF..."):
-        text = extract_text_from_pdf(uploaded_file)
+        file_bytes = uploaded_file.read()
+        text = extract_text_from_pdf(file_bytes)
         if "Error" in text:
             st.error(text)
         else:
