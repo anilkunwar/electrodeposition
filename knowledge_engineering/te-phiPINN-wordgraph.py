@@ -753,13 +753,13 @@ if uploaded_file:
                 st.subheader("Extracted Text Between Phrases")
                 st.text_area("Selected Text", selected_text, height=200)
                 st.subheader("Configure Keyword Selection Criteria")
-                min_freq = st.slider("Minimum frequency", min_value=1, max_value=10, value=1)
-                min_length = st.slider("Minimum length", min_value=3, max_value=30, value=10)
-                use_stopwords = st.checkbox("Use stopword filtering", value=True)
-                top_limit = st.slider("Top limit (max keywords)", min_value=10, max_value=100, value=50, step=10)
-                tfidf_weight = st.slider("TF-IDF weighting", min_value=0.0, max_value=1.0, value=1.0, step=0.1)
-                use_nouns_only = st.checkbox("Filter for nouns only", value=False)
-                include_phrases = st.checkbox("Include multi-word phrases", value=True, disabled=True)
+                min_freq = st.slider("Minimum frequency", min_value=1, max_value=10, value=1, key="min_freq")
+                min_length = st.slider("Minimum length", min_value=3, max_value=30, value=10, key="min_length")
+                use_stopwords = st.checkbox("Use stopword filtering", value=True, key="use_stopwords")
+                top_limit = st.slider("Top limit (max keywords)", min_value=10, max_value=100, value=50, step=10, key="top_limit")
+                tfidf_weight = st.slider("TF-IDF weighting", min_value=0.0, max_value=1.0, value=1.0, step=0.1, key="tfidf_weight")
+                use_nouns_only = st.checkbox("Filter for nouns only", value=False, key="use_nouns_only")
+                include_phrases = st.checkbox("Include multi-word phrases", value=True, disabled=True, key="include_phrases")
                 criteria_parts = [
                     f"frequency ≥ {min_freq}",
                     f"length ≥ {min_length}",
