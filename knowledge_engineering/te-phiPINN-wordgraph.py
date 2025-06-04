@@ -200,12 +200,12 @@ categories:
 """
 
 # Function to load keywords from YAML
-def load_keywords(yaml_content):
+@st.cache_data
+def load_keywords(yaml_content: str) -> dict:
     try:
         data = yaml.safe_load(yaml_content)
         if not isinstance(data, dict):
             raise ValueError("YAML content must be a dictionary")
-        # Handle both flat and nested structures
         if 'categories' in data:
             keywords = {cat: data['categories'][cat]['keywords'] for cat in data['categories']}
         else:
@@ -214,6 +214,7 @@ def load_keywords(yaml_content):
             if not isinstance(terms, list):
                 raise ValueError(f"Category '{category}' must contain a list of keywords")
             keywords[category] = [str(term).lower() for term in terms]
+        logger.info("Loaded keywords from YAML")
         return keywords
     except Exception as e:
         logger.error(f"Error parsing YAML content: {str(e)}")
