@@ -26,37 +26,52 @@ import yaml
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
-# Download NLTK and spaCy data
+# Initialize session state
+if 'custom_stopwords' not in st.session_state:
+    st.session_state.custom_stopwords = "et al,figure,table"
+if 'clear_selections' not in st.session_state:
+    st.session_state.clear_selections = False
+if 'custom_idf' not in st.session_state:
+    st.session_state.custom_idf = {}
+
+# Download NLTK data
 def download_nltk_data():
     try:
         nltk.data.find('tokenizers/punkt_tab')
         nltk.data.find('corpora/stopwords')
         logger.info("NLTK data already present.")
+        return True
     except LookupError:
-        try:
-            logger.info("Downloading NLTK punkt_tab and stopwords...")
-            nltk.download('punkt_tab', quiet=True)
-            nltk.download('stopwords', quiet=True)
-            logger.info("NLTK data downloaded successfully.")
-        except Exception as e:
-            logger.error(f"Failed to download NLTK data: {str(e)}")
-            st.error(f"Failed to download NLTK data: {str(e)}. Please try again or check your network.")
-            return False
-    return True
+        logger.info("Downloading NLTK punkt_tab and stopwords...")
+        nltk.download('punkt_tab', quiet=True)
+        nltk.download('stopwords', quiet=True)
+        logger.info("NLTK data downloaded successfully.")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to download NLTK data: {str(e)}")
+        st.error(f"Failed to download NLTK data: {str(e)}")
+        return False
 
-# Download spaCy model
-try:
-    nlp = spacy.load("en_core_web_sm")
-except OSError:
-    logger.info("Downloading spaCy en_core_web_sm model...")
-    os.system("python -m spacy download en_core_web_sm")
-    nlp = spacy.load("en_core_web_sm")
-
-# Download NLTK data at startup
 if not download_nltk_data():
     st.stop()
 
-# Default keywords in YAML format for Phase Field PINN Cu Template Electrodeposition
+# Cache spaCy model
+@st.cache_resource
+def load_spacy_model():
+    try:
+        nlp = spacy.load("en_core_web_sm")
+        logger.info("Loaded spaCy en_core_web_sm model.")
+        return nlp
+    except OSError:
+        logger.info("Downloading spaCy en_core_web_sm model...")
+        os.system("python -m spacy download en_core_web_sm")
+        nlp = spacy.load("en_core_web_sm")
+        logger.info("Downloaded and loaded spaCy model.")
+        return nlp
+
+nlp = load_spacy_model()
+
+# Default keywords in YAML format
 DEFAULT_KEYWORDS_YAML = """
 categories:
   phase_field_models:
@@ -184,13 +199,13 @@ categories:
       - trenched structure
 """
 
-# Function to load keywords from YAML
-def load_keywords(yaml_content):
+# Cache YAML parsing
+@st.cache_data
+def load_keywords(yaml_content: str) -> dict:
     try:
         data = yaml.safe_load(yaml_content)
         if not isinstance(data, dict):
             raise ValueError("YAML content must be a dictionary")
-        # Handle both flat and nested structures
         if 'categories' in data:
             keywords = {cat: data['categories'][cat]['keywords'] for cat in data['categories']}
         else:
@@ -199,6 +214,7 @@ def load_keywords(yaml_content):
             if not isinstance(terms, list):
                 raise ValueError(f"Category '{category}' must contain a list of keywords")
             keywords[category] = [str(term).lower() for term in terms]
+        logger.info("Loaded keywords from YAML")
         return keywords
     except Exception as e:
         logger.error(f"Error parsing YAML content: {str(e)}")
@@ -245,14 +261,8 @@ BBOX_COLORS = ['black', 'white', 'gray', 'lightgray', 'lightblue', 'lightyellow'
 LAYOUT_ALGORITHMS = ['spring', 'circular', 'kamada_kawai', 'shell', 'spectral', 'random', 'spiral', 'planar']
 WORD_ORIENTATIONS = ['horizontal', 'vertical', 'random']
 
-# Initialize session state for custom stopwords
-if 'custom_stopwords' not in st.session_state:
-    st.session_state.custom_stopwords = "et al,figure,table"
-
-# Existing functions (with fixes for NameError)
+# Functions
 def estimate_idf(term, word_freq, total_words, idf_approx, keyword_categories, nlp_model):
-    if 'custom_idf' not in st.session_state:
-        st.session_state.custom_idf = {}
     if term in st.session_state.custom_idf:
         logger.debug(f"Using cached IDF for {term}: {st.session_state.custom_idf[term]}")
         return st.session_state.custom_idf[term]
@@ -286,7 +296,19 @@ def estimate_idf(term, word_freq, total_words, idf_approx, keyword_categories, n
     logger.debug(f"Estimated IDF for {term}: {estimated_idf:.3f} (freq={freq_idf:.3f}, sim={sim_idf:.3f}, cat={cat_idf:.3f})")
     return estimated_idf
 
-def get_candidate_keywords(text, min_freq, min_length, use_stopwords, custom_stopwords, exclude_keywords, top_limit, tfidf_weight, use_nouns_only, include_phrases):
+@st.cache_data
+def get_candidate_keywords(
+    text: str,
+    min_freq: int,
+    min_length: int,
+    use_stopwords: bool,
+    custom_stopwords: str,
+    exclude_keywords: str,
+    top_limit: int,
+    tfidf_weight: float,
+    use_nouns_only: bool,
+    include_phrases: bool
+) -> tuple:
     stop_words = set(stopwords.words('english')) if use_stopwords else set()
     stop_words.update(['introduction', 'conclusion', 'section', 'chapter', 'the', 'a', 'an', 'preprint', 'submitted', 'manuscript'])
     stop_words.update([w.strip().lower() for w in custom_stopwords.split(",") if w.strip()])
@@ -372,10 +394,11 @@ def get_candidate_keywords(text, min_freq, min_length, use_stopwords, custom_sto
     logger.debug("Categorized keywords: %s", {k: [t[0] for t in v] for k, v in categorized_keywords.items()})
     return categorized_keywords, word_freq, phrases, tfidf_scores, term_to_category, idf_sources
 
-def extract_text_from_pdf(file):
+@st.cache_data
+def extract_text_from_pdf(file_bytes: bytes) -> str:
     try:
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
-            tmp_file.write(file.read())
+            tmp_file.write(file_bytes)
             tmp_file_path = tmp_file.name
         pdf_reader = PyPDF2.PdfReader(tmp_file_path)
         text = ""
@@ -384,6 +407,7 @@ def extract_text_from_pdf(file):
             if page_text:
                 text += page_text + "\n"
         os.unlink(tmp_file_path)
+        logger.info("Extracted text from PDF")
         return text if text.strip() else "No text extracted from the PDF."
     except Exception as e:
         logger.error(f"Error extracting text: {str(e)}")
@@ -447,7 +471,7 @@ def generate_word_cloud(
         fig, ax = plt.subplots(figsize=(16, 8), dpi=400)
         ax.imshow(wordcloud, interpolation='bilinear')
         ax.axis('off')
-        ax.set_title("Word Cloud of Phase Field PINN Template Electrodeposition Keywords", fontsize=title_font_size, pad=20, fontweight='bold')
+        ax.set_title("Word Cloud of Phase Field PINN Electrodeposition Keywords", fontsize=title_font_size, pad=20, fontweight='bold')
         caption = f"Word Cloud generated with: {selection_criteria}"
         plt.figtext(
             0.5, 0.02, caption, ha="center", fontsize=caption_font_size, wrap=True,
@@ -485,64 +509,71 @@ def generate_bibliometric_network(
         sentences = sent_tokenize(text.lower())
         co_occurrences = Counter()
         for sentence in sentences:
-            processed_sentence = sentence
-            for keyword in selected_keywords:
-                processed_sentence = processed_sentence.replace(keyword, keyword.replace(" ", "_"))
-            words_in_sentence = [keyword_map.get(word, word) for word in word_tokenize(processed_sentence) if keyword_map.get(word, word) in top_words]
-            for pair in combinations(set(words_in_sentence), 2):
-                co_occurrences[tuple(sorted(pair))] += 1
+            keyword_map = processed_sentence = sentence
+            for keyword in selected_keywords
+                internal_key = processed_sentence = processed_sentence.replace(keyword, keyword.replace(" ", " "))
+                keyword_map[internal_key] = keyword
+        words = []
+[w for keyword in keyword_map]
+        words_in_sentence = [keyword_map.get(word, w) for w in keywords word_tokenize(processed_sentence) if w in keyword_map.get(w, w)] in top_words
+        for pair in combinations(set(words),_words_in_sentence), 2):
+            for pair in combinations(words_in_sentence, 2)
+                co_occ[tuple(sorted(pair)) += pair] += 1
+        keywords = G(word_freq.most_common(top_words)
         G = nx.Graph()
-        for word, freq in word_freq.most_common(20):
-            G.add_node(word, size=freq)
-        for (word1, word2), weight in co_occurrences.items():
-            if word1 in top_words and word2 in top_words:
-                G.add_edge(word1, word2, weight=weight)
-        communities = greedy_modularity_communities(G)
+        key.add_node(word, size=freq)
+        for keyword, (word1, freq) in word_freq.items():
+        for (w1, w2), weight in co_occ.items():
+            if w1 in top_words and w2 in top_words:
+                key.add_edge(w1, w2, weight=weight)
+        communities = list(greedy_modularity_communities(G))
         node_colors = {}
         try:
             cmap = plt.cm.get_cmap(node_colormap)
-            palette = cmap(np.linspace(0.2, 0.8, max(1, len(communities))))
+            palette = cmap(np.linspace(0, 0.2, 0.8, max(1, len(communities))))
         except ValueError:
-            logger.warning(f"Invalid node colormap {node_colormap}, falling back to viridis")
+            logger.warning(f"Invalid node colormap {node_color_colormap}, falling back to cmap.")
             cmap = plt.cm.get_cmap("viridis")
-            palette = cmap(np.linspace(0.2, 0.8, max(1, len(communities))))
-        for i, community in enumerate(communities):
+            palette = cmap(np.linspace(0, 0.2, 0.8, max(1, [len(k) for k in communities])))
+        for i, community in enumerate(node_colors):
             for node in community:
-                node_colors[node] = palette[i]
-        edge_weights = [G.edges[edge]['weight'] for edge in G.edges]
+                for node in node_colors[i] = palette[i]
+        edge_weights = [G.edges[edge]['weight'] for edge in G.edges()]
         max_weight = max(edge_weights, default=1)
-        edge_widths = [line_thickness * (1 + 2 * np.log1p(weight / max_weight)) for weight in edge_weights]
+        max_weighted_edges = [line_thickness * (1 + 2 * np.log(1p(weight / max_weighted))))
+        for edge in G.edges():
+            try:
+                edge_cmap = plt.cm.get_cmap(edge_colormap)
+                edge_colors = [edge_cmap.get_cmap(weight_colors = [edge_cmap.get_cmap(weight) / max_weight for weight in edge_weights)]
+            except:
+                logger.warning(f"Edge style {edge_style}, falling back to color.")
+                edge_cmap = plt.cm.get_cmap("Blues")
+                edge_colors.append(edge_cmap) = [edge_cmap.get_edge_colors(weight / max_weight) for weight in edge_weights]
         try:
-            edge_cmap = plt.cm.get_cmap(edge_colormap)
-            edge_colors = [edge_cmap(weight / max_weight) for weight in edge_weights]
-        except ValueError:
-            logger.warning(f"Invalid edge colormap {edge_colormap}, falling back to Blues")
-            edge_cmap = plt.cm.get_cmap("Blues")
-            edge_colors = [edge_cmap(weight / max_weight) for weight in edge_weights]
-        try:
-            if layout_algorithm == 'spring':
-                pos = nx.spring_layout(G, k=0.8, seed=42)
-            elif layout_algorithm == 'circular':
-                pos = nx.circular_layout(G, scale=1.2)
-            elif layout_algorithm == 'kamada_kawai':
-                pos = nx.kamada_kawai_layout(G)
-            elif layout_algorithm == 'shell':
-                pos = nx.shell_layout(G)
-            elif layout_algorithm == 'spectral':
-                pos = nx.spectral_layout(G)
-            elif layout_algorithm == 'random':
-                pos = nx.random_layout(G, seed=42)
-            elif layout_algorithm == 'spiral':
-                pos = nx.spiral_layout(G)
-            elif layout_algorithm == 'planar':
-                try:
-                    pos = nx.planar_layout(G)
-                except nx.NetworkXException:
-                    logger.warning("Graph is not planar, falling back to spring layout")
-                    pos = nx.spring_layout(G, k=0.8, seed=42)
+                if layout_algorithm == 'spring':
+                    pos = nx.spring_layout(G, pos = nx.spring_layout(G, k=0.5, seed=42))
+                elif layout_algorithm == 'circular':
+                    pos = nx.circular_layout(G)
+                elif layout_algorithm == 'kamada_kawai':
+                    pos = nx.kamada_kawai(G, pos)
+                elif layout_algorithm == 'shell':
+                    pos = nx.shell_layout(G)
+                elif layout == 'spectral':
+                    pos = nx.spring_layout(G, pos)
+                elif layout == 'random':
+                    pos = nx.random_layout(G, seed=42)
+                elif layout_algorithm == 'spiral':
+                    pos = nx.spiral_layout(G, pos)
+                elif layout_algorithm == 'planar':
+                    pos.remove nx.planar_layout(G, pos)
+                    try:
+                        pos = nx.planar_layout(G)
+                    except nx.NetworkXException:
+                        logger.warning("Graph is not planar, falling back to spring layout")
+                        pos = nx.spring_layout(G, k=0.5, seed=42)
         except Exception as e:
             logger.error(f"Error in layout {layout_algorithm}: {str(e)}, falling back to spring")
-            pos = nx.spring_layout(G, k=0.8, seed=42)
+            pos = nx.spring_layout(G, k=0.5, seed=42)
         try:
             plt.style.use(network_style)
         except ValueError:
@@ -667,10 +698,6 @@ def save_figure(fig, filename):
         logger.error(f"Error saving figure: {str(e)}")
         return False
 
-# Clear selections
-if 'clear_selections' not in st.session_state:
-    st.session_state.clear_selections = False
-
 def clear_selections():
     st.session_state.clear_selections = True
     for key in list(st.session_state.keys()):
@@ -710,7 +737,8 @@ st.session_state.custom_stopwords = custom_stopwords_input
 
 if uploaded_file:
     with st.spinner("Processing PDF..."):
-        text = extract_text_from_pdf(uploaded_file)
+        file_bytes = uploaded_file.read()
+        text = extract_text_from_pdf(file_bytes)
         if "Error" in text:
             st.error(text)
         else:
@@ -721,13 +749,13 @@ if uploaded_file:
                 st.subheader("Extracted Text Between Phrases")
                 st.text_area("Selected Text", selected_text, height=200)
                 st.subheader("Configure Keyword Selection Criteria")
-                min_freq = st.slider("Minimum frequency", min_value=1, max_value=10, value=1)
-                min_length = st.slider("Minimum length", min_value=3, max_value=30, value=10)
-                use_stopwords = st.checkbox("Use stopword filtering", value=True)
-                top_limit = st.slider("Top limit (max keywords)", min_value=10, max_value=100, value=50, step=10)
-                tfidf_weight = st.slider("TF-IDF weighting", min_value=0.0, max_value=1.0, value=1.0, step=0.1)
-                use_nouns_only = st.checkbox("Filter for nouns only", value=False)
-                include_phrases = st.checkbox("Include multi-word phrases", value=True, disabled=True)
+                min_freq = st.slider("Minimum frequency", min_value=1, max_value=10, value=1, key="min_freq")
+                min_length = st.slider("Minimum length", min_value=3, max_value=30, value=10, key="min_length")
+                use_stopwords = st.checkbox("Use stopword filtering", value=True, key="use_stopwords")
+                top_limit = st.slider("Top limit (max keywords)", min_value=10, max_value=100, value=50, step=10, key="top_limit")
+                tfidf_weight = st.slider("TF-IDF weighting", min_value=0.0, max_value=1.0, value=1.0, step=0.1, key="tfidf_weight")
+                use_nouns_only = st.checkbox("Filter for nouns only", value=False, key="use_nouns_only")
+                include_phrases = st.checkbox("Include multi-word phrases", value=True, disabled=True, key="include_phrases")
                 criteria_parts = [
                     f"frequency ≥ {min_freq}",
                     f"length ≥ {min_length}",
@@ -804,13 +832,13 @@ if uploaded_file:
                     st.stop()
                 st.subheader("Visualization Settings")
                 st.markdown("### General Visualization Settings")
-                label_font_size = st.slider("Label font size", min_value=8, max_value=24, value=12, step=1)
-                line_thickness = st.slider("Line thickness", min_value=0.5, max_value=6.0, value=2.5, step=0.5)
-                title_font_size = st.slider("Title font size", min_value=10, max_value=24, value=16, step=1)
-                caption_font_size = st.slider("Caption font size", min_value=8, max_value=16, value=10, step=1)
-                transparency = st.slider("Transparency (nodes, edges, fills)", min_value=0.1, max_value=1.0, value=0.8, step=0.1)
-                label_rotation = st.slider("Label rotation (degrees)", min_value=0, max_value=90, value=0, step=5)
-                label_offset = st.slider("Label offset", min_value=0.0, max_value=0.1, value=0.02, step=0.01)
+                label_font_size = st.slider("Label font size", min_value=8, max_value=24, value=12, step=1, key="label_font_size")
+                line_thickness = st.slider("Line thickness", min_value=0.5, max_value=6.0, value=2.5, step=0.5, key="line_thickness")
+                title_font_size = st.slider("Title font size", min_value=10, max_value=24, value=16, step=1, key="title_font_size")
+                caption_font_size = st.slider("Caption font size", min_value=8, max_value=16, value=10, step=1, key="caption_font_size")
+                transparency = st.slider("Transparency (nodes, edges, fills)", min_value=0.1, max_value=1.0, value=0.8, step=0.1, key="transparency")
+                label_rotation = st.slider("Label rotation (degrees)", min_value=0, max_value=90, value=0, step=5, key="label_rotation")
+                label_offset = st.slider("Label offset", min_value=0.0, max_value=0.1, value=0.02, step=0.01, key="label_offset")
                 criteria_parts.extend([
                     f"label font size: {label_font_size}",
                     f"line thickness: {line_thickness}",
@@ -821,12 +849,12 @@ if uploaded_file:
                     f"label offset: {label_offset}"
                 ])
                 st.markdown("### Word Cloud Settings")
-                wordcloud_colormap = st.selectbox("Select colormap for word cloud", options=COLORMAPS, index=0)
-                word_orientation = st.selectbox("Word orientation", options=WORD_ORIENTATIONS, index=0)
-                font_step = st.slider("Font size step", min_value=1, max_value=10, value=2, step=1)
-                background_color = st.selectbox("Background color", options=['white', 'black', 'lightgray', 'lightblue'], index=0)
-                contour_width = st.slider("Contour width", min_value=0.0, max_value=5.0, value=0.0, step=0.5)
-                contour_color = st.selectbox("Contour color", options=COLORS, index=0)
+                wordcloud_colormap = st.selectbox("Select colormap for word cloud", options=COLORMAPS, index=0, key="wordcloud_colormap")
+                word_orientation = st.selectbox("Word orientation", options=WORD_ORIENTATIONS, index=0, key="word_orientation")
+                font_step = st.slider("Font size step", min_value=1, max_value=10, value=2, step=1, key="font_step")
+                background_color = st.selectbox("Background color", options=['white', 'black', 'lightgray', 'lightblue'], index=0, key="background_color")
+                contour_width = st.slider("Contour width", min_value=0.0, max_value=5.0, value=0.0, step=0.5, key="contour_width")
+                contour_color = st.selectbox("Contour color", options=COLORS, index=0, key="contour_color")
                 criteria_parts.extend([
                     f"word cloud colormap: {wordcloud_colormap}",
                     f"word orientation: {word_orientation}",
@@ -836,19 +864,19 @@ if uploaded_file:
                     f"contour color: {contour_color}"
                 ])
                 st.markdown("### Network Settings")
-                network_style = st.selectbox("Select style for network", options=NETWORK_STYLES, index=0)
-                node_colormap = st.selectbox("Select colormap for network nodes", options=COLORMAPS, index=0)
-                edge_colormap = st.selectbox("Select colormap for network edges", options=COLORMAPS, index=7)
-                layout_algorithm = st.selectbox("Select layout algorithm", options=LAYOUT_ALGORITHMS, index=0)
-                node_size_scale = st.slider("Node size scale", min_value=10, max_value=100, value=50, step=5)
-                node_shape = st.selectbox("Node shape", options=NODE_SHAPES, index=0)
-                node_linewidth = st.slider("Node border thickness", min_value=0.5, max_value=5.0, value=1.5, step=0.5)
-                node_edgecolor = st.selectbox("Node border color", options=COLORS, index=0)
-                edge_style = st.selectbox("Edge style", options=EDGE_STYLES, index=0)
-                label_font_color = st.selectbox("Label font color", options=COLORS, index=0)
-                label_font_family = st.selectbox("Label font family", options=FONT_FAMILIES, index=0)
-                label_bbox_facecolor = st.selectbox("Label background color", options=BBOX_COLORS, index=0)
-                label_bbox_alpha = st.slider("Label background transparency", min_value=0.1, max_value=1.0, value=0.6, step=0.1)
+                network_style = st.selectbox("Select style for network", options=NETWORK_STYLES, index=0, key="network_style")
+                node_colormap = st.selectbox("Select colormap for network nodes", options=COLORMAPS, index=0, key="node_colormap")
+                edge_colormap = st.selectbox("Select colormap for network edges", options=COLORMAPS, index=7, key="edge_colormap")
+                layout_algorithm = st.selectbox("Select layout algorithm", options=LAYOUT_ALGORITHMS, index=0, key="layout_algorithm")
+                node_size_scale = st.slider("Node size scale", min_value=10, max_value=100, value=50, step=5, key="node_size_scale")
+                node_shape = st.selectbox("Node shape", options=NODE_SHAPES, index=0, key="node_shape")
+                node_linewidth = st.slider("Node border thickness", min_value=0.5, max_value=5.0, value=1.5, step=0.5, key="node_linewidth")
+                node_edgecolor = st.selectbox("Node border color", options=COLORS, index=0, key="node_edgecolor")
+                edge_style = st.selectbox("Edge style", options=EDGE_STYLES, index=0, key="edge_style")
+                label_font_color = st.selectbox("Label font color", options=COLORS, index=0, key="label_font_color")
+                label_font_family = st.selectbox("Label font family", options=FONT_FAMILIES, index=0, key="label_font_family")
+                label_bbox_facecolor = st.selectbox("Label background color", options=BBOX_COLORS, index=0, key="label_bbox_facecolor")
+                label_bbox_alpha = st.slider("Label background transparency", min_value=0.1, max_value=1.0, value=0.6, step=0.1, key="label_bbox_alpha")
                 criteria_parts.extend([
                     f"network style: {network_style}",
                     f"node colormap: {node_colormap}",
@@ -865,12 +893,12 @@ if uploaded_file:
                     f"label background transparency: {label_bbox_alpha}"
                 ])
                 st.markdown("### Radar Chart Settings")
-                radar_max_keywords = st.slider("Number of keywords for radar charts", min_value=3, max_value=12, value=6, step=1)
-                freq_radar_colormap = st.selectbox("Colormap for frequency radar chart", options=COLORMAPS, index=0)
-                tfidf_radar_colormap = st.selectbox("Colormap for TF-IDF radar chart", options=COLORMAPS, index=0)
-                grid_color = st.selectbox("Grid color", options=COLORS, index=0)
-                grid_style = st.selectbox("Grid style", options=EDGE_STYLES, index=0)
-                grid_thickness = st.slider("Grid thickness", min_value=0.5, max_value=5.0, value=2.0, step=0.5)
+                radar_max_keywords = st.slider("Number of keywords for radar charts", min_value=3, max_value=12, value=6, step=1, key="radar_max_keywords")
+                freq_radar_colormap = st.selectbox("Colormap for frequency radar chart", options=COLORMAPS, index=0, key="freq_radar_colormap")
+                tfidf_radar_colormap = st.selectbox("Colormap for TF-IDF radar chart", options=COLORMAPS, index=0, key="tfidf_radar_colormap")
+                grid_color = st.selectbox("Grid color", options=COLORS, index=0, key="grid_color")
+                grid_style = st.selectbox("Grid style", options=EDGE_STYLES, index=0, key="grid_style")
+                grid_thickness = st.slider("Grid thickness", min_value=0.5, max_value=5.0, value=2.0, step=0.5, key="grid_thickness")
                 criteria_parts.extend([
                     f"radar max keywords: {radar_max_keywords}",
                     f"frequency radar colormap: {freq_radar_colormap}",
