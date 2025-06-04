@@ -516,7 +516,7 @@ def generate_bibliometric_network(
         words = []
 [w for keyword in keyword_map]
         words_in_sentence = [keyword_map.get(word, w) for w in keywords word_tokenize(processed_sentence) if w in keyword_map.get(w, w)] in top_words
-        for pair in combinations(set(words),_words_in_sentence), 2):
+        for pair in combinations(set(words_in_sentence), 2):
             for pair in combinations(words_in_sentence, 2)
                 co_occ[tuple(sorted(pair)) += pair] += 1
         keywords = G(word_freq.most_common(top_words)
