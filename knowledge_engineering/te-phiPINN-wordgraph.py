@@ -26,50 +26,35 @@ import yaml
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
-# Initialize session state
-if 'custom_stopwords' not in st.session_state:
-    st.session_state.custom_stopwords = "et al,figure,table"
-if 'clear_selections' not in st.session_state:
-    st.session_state.clear_selections = False
-if 'custom_idf' not in st.session_state:
-    st.session_state.custom_idf = {}
-
-# Download NLTK data
+# Download NLTK and spaCy data
 def download_nltk_data():
     try:
         nltk.data.find('tokenizers/punkt_tab')
         nltk.data.find('corpora/stopwords')
         logger.info("NLTK data already present.")
-        return True
     except LookupError:
-        logger.info("Downloading NLTK punkt_tab and stopwords...")
-        nltk.download('punkt_tab', quiet=True)
-        nltk.download('stopwords', quiet=True)
-        logger.info("NLTK data downloaded successfully.")
-        return True
-    except Exception as e:
-        logger.error(f"Failed to download NLTK data: {str(e)}")
-        st.error(f"Failed to download NLTK data: {str(e)}")
-        return False
+        try:
+            logger.info("Downloading NLTK punkt_tab and stopwords...")
+            nltk.download('punkt_tab', quiet=True)
+            nltk.download('stopwords', quiet=True)
+            logger.info("NLTK data downloaded successfully.")
+        except Exception as e:
+            logger.error(f"Failed to download NLTK data: {str(e)}")
+            st.error(f"Failed to download NLTK data: {str(e)}. Please try again or check your network.")
+            return False
+    return True
 
+# Download spaCy model
+try:
+    nlp = spacy.load("en_core_web_sm")
+except OSError:
+    logger.info("Downloading spaCy en_core_web_sm model...")
+    os.system("python -m spacy download en_core_web_sm")
+    nlp = spacy.load("en_core_web_sm")
+
+# Download NLTK data at startup
 if not download_nltk_data():
     st.stop()
-
-# Cache spaCy model
-@st.cache_resource
-def load_spacy_model():
-    try:
-        nlp = spacy.load("en_core_web_sm")
-        logger.info("Loaded spaCy en_core_web_sm model.")
-        return nlp
-    except OSError:
-        logger.info("Downloading spaCy en_core_web_sm model...")
-        os.system("python -m spacy download en_core_web_sm")
-        nlp = spacy.load("en_core_web_sm")
-        logger.info("Downloaded and loaded spaCy model.")
-        return nlp
-
-nlp = load_spacy_model()
 
 # Default keywords in YAML format for Phase Field PINN Cu Template Electrodeposition
 DEFAULT_KEYWORDS_YAML = """
@@ -200,12 +185,12 @@ categories:
 """
 
 # Function to load keywords from YAML
-@st.cache_data
-def load_keywords(yaml_content: str) -> dict:
+def load_keywords(yaml_content):
     try:
         data = yaml.safe_load(yaml_content)
         if not isinstance(data, dict):
             raise ValueError("YAML content must be a dictionary")
+        # Handle both flat and nested structures
         if 'categories' in data:
             keywords = {cat: data['categories'][cat]['keywords'] for cat in data['categories']}
         else:
@@ -214,7 +199,6 @@ def load_keywords(yaml_content: str) -> dict:
             if not isinstance(terms, list):
                 raise ValueError(f"Category '{category}' must contain a list of keywords")
             keywords[category] = [str(term).lower() for term in terms]
-        logger.info("Loaded keywords from YAML")
         return keywords
     except Exception as e:
         logger.error(f"Error parsing YAML content: {str(e)}")
@@ -302,20 +286,7 @@ def estimate_idf(term, word_freq, total_words, idf_approx, keyword_categories, n
     logger.debug(f"Estimated IDF for {term}: {estimated_idf:.3f} (freq={freq_idf:.3f}, sim={sim_idf:.3f}, cat={cat_idf:.3f})")
     return estimated_idf
 
-@st.cache_data
-def get_candidate_keywords(
-    text: str,
-    min_freq: int,
-    min_length: int,
-    use_stopwords: bool,
-    custom_stopwords: str,
-    exclude_keywords: str,
-    top_limit: int,
-    tfidf_weight: float,
-    use_nouns_only: bool,
-    include_phrases: bool
-) -> tuple:
-    # [Function body remains identical to your original]
+def get_candidate_keywords(text, min_freq, min_length, use_stopwords, custom_stopwords, exclude_keywords, top_limit, tfidf_weight, use_nouns_only, include_phrases):
     stop_words = set(stopwords.words('english')) if use_stopwords else set()
     stop_words.update(['introduction', 'conclusion', 'section', 'chapter', 'the', 'a', 'an', 'preprint', 'submitted', 'manuscript'])
     stop_words.update([w.strip().lower() for w in custom_stopwords.split(",") if w.strip()])
@@ -401,11 +372,10 @@ def get_candidate_keywords(
     logger.debug("Categorized keywords: %s", {k: [t[0] for t in v] for k, v in categorized_keywords.items()})
     return categorized_keywords, word_freq, phrases, tfidf_scores, term_to_category, idf_sources
 
-@st.cache_data
-def extract_text_from_pdf(file_bytes: bytes) -> str:
+def extract_text_from_pdf(file):
     try:
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
-            tmp_file.write(file_bytes)
+            tmp_file.write(file.read())
             tmp_file_path = tmp_file.name
         pdf_reader = PyPDF2.PdfReader(tmp_file_path)
         text = ""
@@ -414,7 +384,6 @@ def extract_text_from_pdf(file_bytes: bytes) -> str:
             if page_text:
                 text += page_text + "\n"
         os.unlink(tmp_file_path)
-        logger.info("Extracted text from PDF")
         return text if text.strip() else "No text extracted from the PDF."
     except Exception as e:
         logger.error(f"Error extracting text: {str(e)}")
@@ -741,8 +710,7 @@ st.session_state.custom_stopwords = custom_stopwords_input
 
 if uploaded_file:
     with st.spinner("Processing PDF..."):
-        file_bytes = uploaded_file.read()
-        text = extract_text_from_pdf(file_bytes)
+        text = extract_text_from_pdf(uploaded_file)
         if "Error" in text:
             st.error(text)
         else:
@@ -753,13 +721,13 @@ if uploaded_file:
                 st.subheader("Extracted Text Between Phrases")
                 st.text_area("Selected Text", selected_text, height=200)
                 st.subheader("Configure Keyword Selection Criteria")
-                min_freq = st.slider("Minimum frequency", min_value=1, max_value=10, value=1, key="min_freq")
-                min_length = st.slider("Minimum length", min_value=3, max_value=30, value=10, key="min_length")
-                use_stopwords = st.checkbox("Use stopword filtering", value=True, key="use_stopwords")
-                top_limit = st.slider("Top limit (max keywords)", min_value=10, max_value=100, value=50, step=10, key="top_limit")
-                tfidf_weight = st.slider("TF-IDF weighting", min_value=0.0, max_value=1.0, value=1.0, step=0.1, key="tfidf_weight")
-                use_nouns_only = st.checkbox("Filter for nouns only", value=False, key="use_nouns_only")
-                include_phrases = st.checkbox("Include multi-word phrases", value=True, disabled=True, key="include_phrases")
+                min_freq = st.slider("Minimum frequency", min_value=1, max_value=10, value=1)
+                min_length = st.slider("Minimum length", min_value=3, max_value=30, value=10)
+                use_stopwords = st.checkbox("Use stopword filtering", value=True)
+                top_limit = st.slider("Top limit (max keywords)", min_value=10, max_value=100, value=50, step=10)
+                tfidf_weight = st.slider("TF-IDF weighting", min_value=0.0, max_value=1.0, value=1.0, step=0.1)
+                use_nouns_only = st.checkbox("Filter for nouns only", value=False)
+                include_phrases = st.checkbox("Include multi-word phrases", value=True, disabled=True)
                 criteria_parts = [
                     f"frequency ≥ {min_freq}",
                     f"length ≥ {min_length}",
